@@ -3,7 +3,7 @@
     var canvas = document.getElementById("stage");
     var ctx = canvas.getContext("2d");
 
-    var width = 500;
+    var width = 1000;
     var height = 800;
     canvas.width = width;
     canvas.height = height;
@@ -35,6 +35,8 @@
             this.velocity = 0.1;
             this.vector = {x:0, y:-1};
             this.busyCount = 0;
+            this.busy = 0;  
+            this.hover = 0;
         }
 
         setVector(ox, oy, x, y){
@@ -78,6 +80,14 @@
                 ctx.setLineDash([]);
                 ctx.arc(b.x, b.y, b.r, 0, Math.PI*2, false);
                 ctx.strokeStyle = "black";
+                if(ctx.isPointInPath(lastMoved.x, lastMoved.y)){
+                    b.hover = 1;
+                    ctx.lineWidth = 2;
+                }
+                else{
+                    b.hover = 0;
+                    ctx.lineWidth = 1;
+                }
                 ctx.stroke();
             }
         }
@@ -86,8 +96,12 @@
             for(var i in this.list){
                 var b = this.list[i];
                 ctx.beginPath();
-                ctx.LineTo(b.x, b.y);
-                ctx.LineTo(b.x+b.vector.x*b.velocity, b.y+b.vector.y*b.velocity);
+                ctx.arc(b.x, b.y, 3, 0, Math.PI*2, false);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.strokeStyle = "black";
+                ctx.lineTo(b.x, b.y);
+                ctx.lineTo(b.x+b.vector.x*b.velocity*80, b.y+b.vector.y*b.velocity*80);
                 ctx.stroke();
             }
         }
@@ -148,6 +162,18 @@
             };
         }
 
+        addVector(v1, v2){
+            var ox = v1.x;
+            var oy = v1.y;
+            var x = v2.x;
+            var y = v2.y;
+            var l = Math.sqrt((x-ox)*(x-ox)+(y-oy)*(y-oy));
+            return {
+                x: (x+ox)/l,
+                y: (y+oy)/l
+            };
+        }
+
         collisions(){
             for(var i in this.list){
                 this.collisionWall(this.list[i]);
@@ -160,20 +186,23 @@
                     var bj = this.list[j];
                     ret = this.collisionBubble(bi, bj);
                     if(ret){
+                        bi.busy = 1;
+                        bi.velocity = 1;
+                        bj.velocity = 1;
+
                         var oriVec = bi.vector;
                         var addVec = bubbles.getUnitVector(bj.x, bj.y, bi.x, bi.y);
-                        bi.setVector(oriVec.x, oriVec.y, oriVec.x+addVec.x, oriVec.y+addVec.y);
+                        bi.vector = bubbles.addVector(oriVec.x, oriVec.y, addVec.x, addVec.y);
                         oriVec = bj.vector;
                         addVec = bubbles.getUnitVector(bi.x, bi.y, bj.x, bj.y);
                         bj.setVector(oriVec.x, oriVec.y, oriVec.x+addVec.x, oriVec.y+addVec.y);
                         
                         /*
-                        bj.velocity = 1;
                         bj.setVector(bi.x, bi.y, bj.x, bj.y);
-                        bi.velocity = 1;
                         bi.setVector(bj.x, bj.y, bi.x, bi.y);
                         */
-                        bi.busyCount++;
+                        
+                        //bi.busyCount++;
                     }
                 }
                 if(!ret){
@@ -181,6 +210,7 @@
                     bi.vector.x = 0;          
                     bi.vector.y = -1;
                     bi.busyCount = 0;
+                    bi.busy = 0;
                 }
                 if(bi.busyCount>60*5){
                     bi.x = width/2;
@@ -192,16 +222,18 @@
         moveBubbles(){
             for(var i in this.list){
                 var b = this.list[i];
-                b.x += b.velocity * b.vector.x;
-                b.y += b.velocity * b.vector.y;
+                if(!b.busy){
+                    b.x += b.velocity * b.vector.x;
+                    b.y += b.velocity * b.vector.y;
+                }
             }
         }
 
         frame(){
-            this.moveBubbles();
-            this.collisions();
+            //this.moveBubbles();
+            //this.collisions();
             this.drawArcs();
-            this.drawVectors();
+            //this.drawVectors();
         }
 
         kakimazeru(){
@@ -225,28 +257,85 @@
         y:0,
         r:0
     };
+    bubbleDragging = {
+        flag: 0,
+        ox:0,
+        oy:0,
+        x:0,
+        y:0,
+        lx:0,
+        ly:0,
+        bubble: null
+    };
+    lastClicked = {
+        x: 0,
+        y: 0
+    }
+    lastMoved = {
+        x: 0,
+        y: 0
+    }
     function onMouseDown(e){
-        bubbleMaking.flag = 1;
         x = e.clientX;
         y = e.clientY;
-        bubbleMaking.ox = e.clientX;
-        bubbleMaking.oy = e.clientY;
-        bubbleMaking.x = e.clientX;
-        bubbleMaking.y = e.clientY;
-        bubbleMaking.r = 0;
+        lastClicked.x = x;
+        lastClicked.y = y;
+            
+        var ret = 0;
+        if(!bubbleDragging.flag){
+            for(var i in bubbles.list){
+                var b = bubbles.list[i];
+                if(b.hover){
+                    ret = 1;
+                    bubbleDragging.flag = 1;
+                    bubbleDragging.bubble = b;
+                    bubbleDragging.ox = x;
+                    bubbleDragging.oy = y;
+                    bubbleDragging.lx = bubbleDragging.bubble.x - x;
+                    bubbleDragging.ly = bubbleDragging.bubble.y - y;
+                }
+            }
+        }
+        if(!ret && !bubbleMaking.flag){
+            bubbleMaking.flag = 1;
+            bubbleMaking.ox = e.clientX;
+            bubbleMaking.oy = e.clientY;
+            bubbleMaking.x = e.clientX;
+            bubbleMaking.y = e.clientY;
+            bubbleMaking.r = 0;
+        }
+        
     }
     function onMouseMove(e){
-        ox = bubbleMaking.ox;
-        oy = bubbleMaking.oy;
         x = e.clientX;
         y = e.clientY;
-        bubbleMaking.x = e.clientX;
-        bubbleMaking.y = e.clientY;
-        bubbleMaking.r = Math.sqrt((x-ox)*(x-ox) + (y-oy)*(y-oy));
+        ox = bubbleMaking.ox;
+        oy = bubbleMaking.oy;
+            
+        lastMoved.x = x;
+        lastMoved.y = y;
+
+        if(bubbleDragging.flag){
+            bubbleDragging.x = x;
+            bubbleDragging.y = y;
+            bubbleDragging.bubble.x = x + bubbleDragging.lx;
+            bubbleDragging.bubble.y = y + bubbleDragging.ly;
+
+        }
+        else if(bubbleMaking.flag){
+            bubbleMaking.x = e.clientX;
+            bubbleMaking.y = e.clientY;
+            bubbleMaking.r = Math.sqrt((x-ox)*(x-ox) + (y-oy)*(y-oy));
+        }
     }
     function onMouseUp(e){
-        bubbleMaking.flag = 0;
-        bubbles.add(new Bubble(bubbleMaking.ox, bubbleMaking.oy, bubbleMaking.r, "bubble"+bubbles.num));
+        if(bubbleDragging.flag){
+            bubbleDragging.flag = 0;
+        }
+        if(bubbleMaking.flag){
+            bubbleMaking.flag = 0;
+            bubbles.add(new Bubble(bubbleMaking.ox, bubbleMaking.oy, bubbleMaking.r, "bubble"+bubbles.num));
+        }
     }
 
     canvas.addEventListener("mousedown", onMouseDown, false);
